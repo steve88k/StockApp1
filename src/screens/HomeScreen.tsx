@@ -17,7 +17,7 @@ export function HomeScreen() {
   const handleSubmit = async () => {
     const cleaned = symbol.trim().toUpperCase();
     if (!cleaned) {
-      setError('請先輸入股票代號。');
+      setError('Please enter the stock ticker first.');
       setData(null);
       return;
     }
@@ -28,7 +28,7 @@ export function HomeScreen() {
       const result = await fetchPrediction(cleaned);
       setData(result);
     } catch (e) {
-      setError('無法連接 backend，請確認本機 API 已啟動。');
+      setError('Search failed. Please enter the ticker symbol again.');
       setData(null);
     } finally {
       setLoading(false);

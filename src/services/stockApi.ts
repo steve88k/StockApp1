@@ -1,13 +1,29 @@
-import {API_BASE_URL} from '../config/env';
 import {PredictionResponse} from '../types/prediction';
 
-export async function fetchPrediction(symbol: string): Promise<PredictionResponse> {
-  const url = `${API_BASE_URL}/api/predict?q=${encodeURIComponent(symbol)}`;
-  const response = await fetch(url);
+const probabilityMap: Record<string, number> = {
+  AAPL: 0.71,
+  NVDA: 0.64,
+  TSLA: 0.42,
+  MSFT: 0.58,
+};
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
+export async function fetchPrediction(symbol: string): Promise<PredictionResponse> {
+  const upper = symbol.trim().toUpperCase();
+
+  if (!upper) {
+    throw new Error('Missing symbol');
   }
 
-  return response.json();
+  const probability = probabilityMap[upper] ?? 0.37;
+  const decision =
+    probability >= 0.6 ? 'BUY' :
+    probability >= 0.45 ? 'HOLD' :
+    'AVOID';
+
+  return {
+    symbol: upper,
+    probability,
+    decision,
+    rationale: '目前為本機 mock 預測結果，不需連接 backend。',
+  };
 }
