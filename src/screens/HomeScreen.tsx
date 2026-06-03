@@ -3,33 +3,45 @@ import {ActivityIndicator, ScrollView, StyleSheet, Text, View} from 'react-nativ
 import {SearchBar} from '../components/SearchBar';
 import {ResultCard} from '../components/ResultCard';
 import {StateCard} from '../components/StateCard';
+import {StockLineChart} from '../components/StockLineChart';
+import {StockSummaryCard} from '../components/StockSummaryCard';
 import {APP_TITLE, DEFAULT_SYMBOL} from '../constants/labels';
-import {fetchPrediction} from '../services/stockApi';
+import {fetchPrediction, fetchStockHistory} from '../services/stockApi';
 import {PredictionResponse} from '../types/prediction';
+import {StockHistoryResponse} from '../types/stock';
 import {colors} from '../theme/colors';
 
 export function HomeScreen() {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<PredictionResponse | null>(null);
+  const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
+  const [stockData, setStockData] = useState<StockHistoryResponse | null>(null);
 
   const handleSubmit = async () => {
     const cleaned = symbol.trim().toUpperCase();
     if (!cleaned) {
       setError('Please enter the stock ticker first.');
-      setData(null);
+      setPrediction(null);
+      setStockData(null);
       return;
     }
 
     try {
       setLoading(true);
       setError(null);
-      const result = await fetchPrediction(cleaned);
-      setData(result);
-    } catch (e) {
-      setError('Search failed. Please enter the ticker symbol again.');
-      setData(null);
+
+      const [predictionResult, stockHistoryResult] = await Promise.all([
+        fetchPrediction(cleaned),
+        fetchStockHistory(cleaned, '3mo', '1d'),
+      ]);
+
+      setPrediction(predictionResult);
+      setStockData(stockHistoryResult);
+    } catch (e: any) {
+      setError(e?.message || 'Search failed. Please enter the ticker symbol again.');
+      setPrediction(null);
+      setStockData(null);
     } finally {
       setLoading(false);
     }
@@ -38,7 +50,9 @@ export function HomeScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>{APP_TITLE}</Text>
-      <Text style={styles.subtitle}>Android Studio emulator + local backend workflow</Text>
+      <Text style={styles.subtitle}>
+        Fetches the stock price data + Offline inference
+      </Text>
 
       <SearchBar
         value={symbol}
@@ -55,8 +69,12 @@ export function HomeScreen() {
           </View>
         ) : error ? (
           <StateCard title="An error occurred" message={error} tone="error" />
-        ) : data ? (
-          <ResultCard data={data} />
+        ) : prediction && stockData ? (
+          <View style={styles.resultGroup}>
+            <StockSummaryCard data={stockData} />
+            <StockLineChart data={stockData} />
+            <ResultCard data={prediction} />
+          </View>
         ) : (
           <StateCard
             title="No search yet"
@@ -84,7 +102,10 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   content: {
-    minHeight: 240,
+    minHeight: 320,
+  },
+  resultGroup: {
+    gap: 16,
   },
   loadingBox: {
     alignItems: 'center',
