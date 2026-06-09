@@ -15,14 +15,14 @@ export function HomeScreen() {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
+  const [data, setData] = useState<PredictionResponse | null>(null);
   const [stockData, setStockData] = useState<StockHistoryResponse | null>(null);
 
   const handleSubmit = async () => {
     const cleaned = symbol.trim().toUpperCase();
     if (!cleaned) {
       setError('Please enter the stock ticker first.');
-      setPrediction(null);
+      setData(null);
       setStockData(null);
       return;
     }
@@ -36,11 +36,11 @@ export function HomeScreen() {
         fetchStockHistory(cleaned, '3mo', '1d'),
       ]);
 
-      setPrediction(predictionResult);
+      setData(predictionResult);
       setStockData(stockHistoryResult);
     } catch (e: any) {
       setError(e?.message || 'Search failed. Please enter the ticker symbol again.');
-      setPrediction(null);
+      setData(null);
       setStockData(null);
     } finally {
       setLoading(false);
@@ -69,11 +69,11 @@ export function HomeScreen() {
           </View>
         ) : error ? (
           <StateCard title="An error occurred" message={error} tone="error" />
-        ) : prediction && stockData ? (
+        ) : data && stockData ? (
           <View style={styles.resultGroup}>
             <StockSummaryCard data={stockData} />
             <StockLineChart data={stockData} />
-            <ResultCard data={prediction} />
+            <ResultCard data={data} />
           </View>
         ) : (
           <StateCard
