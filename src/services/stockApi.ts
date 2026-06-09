@@ -1,12 +1,8 @@
 import {PredictionResponse} from '../types/prediction';
+import {predict} from '../ml/prediction';
+import {FundamentalInfo, PriceBar} from '../ml/featureBuilder';
 import {StockHistoryResponse, StockPoint} from '../types/stock';
 
-const probabilityMap: Record<string, number> = {
-  AAPL: 0.71,
-  NVDA: 0.64,
-  TSLA: 0.42,
-  MSFT: 0.58,
-};
 
 function formatDateLabel(unixSeconds: number) {
   const d = new Date(unixSeconds * 1000);
@@ -15,21 +11,38 @@ function formatDateLabel(unixSeconds: number) {
   return `${month}/${day}`;
 }
 
+export async function getHistory(symbol: string): Promise<PriceBar[]> {
+  const upper = symbol.trim().toUpperCase();
+  if (!upper) throw new Error('Missing symbol');
+  return [];
+}
+
+export async function getInfo(symbol: string): Promise<FundamentalInfo> {
+  const upper = symbol.trim().toUpperCase();
+  if (!upper) throw new Error('Missing symbol');
+  return {};
+}
+
+function toDecision(probability: number): PredictionResponse['decision'] {
+  if (probability >= 0.6) return 'BUY';
+  if (probability >= 0.45) return 'HOLD';
+  return 'AVOID';
+}
+
 export async function fetchPrediction(symbol: string): Promise<PredictionResponse> {
   const upper = symbol.trim().toUpperCase();
+  if (!upper) throw new Error('Missing symbol');
 
-  if (!upper) {
-    throw new Error('Missing symbol');
-  }
-
-  const probability = probabilityMap[upper] ?? 0.37;
-  const decision = probability >= 0.6 ? 'BUY' : probability >= 0.45 ? 'HOLD' : 'AVOID';
+  const [history, info] = await Promise.all([getHistory(upper), getInfo(upper)]);
+  const modelPath = require('../assets/us_market_model.tflite');
+  const result = await predict(modelPath, history, info);
+  const probability = Number.isFinite(result.score) ? Math.max(0, Math.min(1, result.score)) : 0;
 
   return {
     symbol: upper,
     probability,
-    decision,
-    rationale: '目前為本機 mock 預測結果，可之後替換成 TFLite 離線推論。',
+    decision: toDecision(probability),
+    rationale: '已使用 RN 本地 TFLite 模型推論。',
   };
 }
 
