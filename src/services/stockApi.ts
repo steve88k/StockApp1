@@ -1,4 +1,6 @@
 import {PredictionResponse} from '../types/prediction';
+import {predict} from '../ml/prediction';
+import {FundamentalInfo, PriceBar} from '../ml/featureBuilder';
 import {StockHistoryResponse, StockPoint} from '../types/stock';
 
 
@@ -31,18 +33,16 @@ export async function fetchPrediction(symbol: string): Promise<PredictionRespons
   const upper = symbol.trim().toUpperCase();
   if (!upper) throw new Error('Missing symbol');
 
-  // Mock prediction to unblock Android build.
-  // (The react-native-fast-tflite + nitro native modules have Kotlin API incompatibilities
-  // with RN 0.74 in the current setup. Real TFLite inference can be restored by aligning
-  // library versions or moving to the backend approach described in README.)
-  const hash = upper.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  const probability = 0.35 + ((hash % 55) / 100); // demo value between ~0.35-0.9
+  const [history, info] = await Promise.all([getHistory(upper), getInfo(upper)]);
+  const modelPath = require('../assets/us_market_model.tflite');
+  const result = await predict(modelPath, history, info);
+  const probability = Number.isFinite(result.score) ? Math.max(0, Math.min(1, result.score)) : 0;
 
   return {
     symbol: upper,
-    probability: Math.max(0.1, Math.min(0.95, Number(probability.toFixed(2)))),
+    probability,
     decision: toDecision(probability),
-    rationale: 'Demo prediction (native TFLite disabled for build compatibility).',
+    rationale: '已使用 RN 本地 TFLite 模型推論。',
   };
 }
 
