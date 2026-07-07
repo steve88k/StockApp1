@@ -5848,7 +5848,7 @@ react-native-fast-tflite@^3.0.1:
   resolved "https://registry.npmjs.org/react-native-fast-tflite/-/react-native-fast-tflite-3.0.1.tgz"
   integrity sha512-88wNR/4iR8X0zuQtrpb1jRbF+X+hUqrD8cER4DhNJnbhA+3PuGz8SoP3n8WEhjYWDkGqTme2Ezk+mbeLiiE+6w==
 
-react-native-nitro-modules@*, react-native-nitro-modules@^0.35.9:
+react-native-nitro-modules@*:
   version "0.35.9"
   resolved "https://registry.npmjs.org/react-native-nitro-modules/-/react-native-nitro-modules-0.35.9.tgz"
   integrity sha512-yCO6eJ85SPPUo4a4an7H5oj6wPCSIT72fbjr5WZ/20n6zswaJ2gNNpnWtg2We0AZwkAOjSqkOJ0Vjc05p6kGiA==
