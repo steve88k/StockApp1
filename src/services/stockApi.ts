@@ -3,6 +3,7 @@ import {predict} from '../ml/prediction';
 import {FundamentalInfo, PriceBar} from '../ml/featureBuilder';
 import {StockHistoryResponse, StockPoint} from '../types/stock';
 
+const MODEL = require('../assets/us_market_model.tflite');
 
 function formatDateLabel(unixSeconds: number) {
   const d = new Date(unixSeconds * 1000);
@@ -11,48 +12,24 @@ function formatDateLabel(unixSeconds: number) {
   return `${month}/${day}`;
 }
 
-export async function getHistory(symbol: string): Promise<PriceBar[]> {
-  const upper = symbol.trim().toUpperCase();
-  if (!upper) throw new Error('Missing symbol');
-  return [];
+function formatIsoDate(unixSeconds: number) {
+  return new Date(unixSeconds * 1000).toISOString().slice(0, 10);
 }
 
-export async function getInfo(symbol: string): Promise<FundamentalInfo> {
-  const upper = symbol.trim().toUpperCase();
-  if (!upper) throw new Error('Missing symbol');
-  return {};
-}
+type ChartParseResult = {
+  symbol: string;
+  currency?: string;
+  exchangeName?: string;
+  points: StockPoint[];
+  bars: PriceBar[];
+};
 
-function toDecision(probability: number): PredictionResponse['decision'] {
-  if (probability >= 0.6) return 'BUY';
-  if (probability >= 0.45) return 'HOLD';
-  return 'AVOID';
-}
-
-export async function fetchPrediction(symbol: string): Promise<PredictionResponse> {
-  const upper = symbol.trim().toUpperCase();
-  if (!upper) throw new Error('Missing symbol');
-
-  const [history, info] = await Promise.all([getHistory(upper), getInfo(upper)]);
-  const modelPath = require('../assets/us_market_model.tflite');
-  const result = await predict(modelPath, history, info);
-  const probability = Number.isFinite(result.score) ? Math.max(0, Math.min(1, result.score)) : 0;
-
-  return {
-    symbol: upper,
-    probability,
-    decision: toDecision(probability),
-    rationale: '已使用 RN 本地 TFLite 模型推論。',
-  };
-}
-
-export async function fetchStockHistory(
+async function fetchYahooChart(
   symbol: string,
-  range: string = '3mo',
-  interval: string = '1d',
-): Promise<StockHistoryResponse> {
+  range: string,
+  interval: string,
+): Promise<ChartParseResult> {
   const cleaned = symbol.trim().toUpperCase();
-
   if (!cleaned) {
     throw new Error('Please enter the ticker symbol first.');
   }
@@ -94,40 +71,41 @@ export async function fetchStockHistory(
   const lows: Array<number | null> = quote.low ?? [];
   const volumes: Array<number | null> = quote.volume ?? [];
 
-  const points: StockPoint[] = timestamps
-  .map((ts, index) => {
+  const points: StockPoint[] = [];
+  const bars: PriceBar[] = [];
+
+  timestamps.forEach((ts, index) => {
     const close = closes[index];
     if (close == null || !Number.isFinite(close)) {
-      return null;
+      return;
     }
-
-    const point: StockPoint = {
-      timestamp: ts,
-      dateLabel: formatDateLabel(ts),
-      close,
-    };
 
     const open = opens[index];
     const high = highs[index];
     const low = lows[index];
     const volume = volumes[index];
 
-    if (open != null && Number.isFinite(open)) {
-      point.open = open;
-    }
-    if (high != null && Number.isFinite(high)) {
-      point.high = high;
-    }
-    if (low != null && Number.isFinite(low)) {
-      point.low = low;
-    }
-    if (volume != null && Number.isFinite(volume)) {
-      point.volume = volume;
-    }
+    const point: StockPoint = {
+      timestamp: ts,
+      dateLabel: formatDateLabel(ts),
+      close,
+    };
+    if (open != null && Number.isFinite(open)) point.open = open;
+    if (high != null && Number.isFinite(high)) point.high = high;
+    if (low != null && Number.isFinite(low)) point.low = low;
+    if (volume != null && Number.isFinite(volume)) point.volume = volume;
+    points.push(point);
 
-    return point;
-  })
-  .filter((item): item is StockPoint => item !== null);
+    const bar: PriceBar = {
+      date: formatIsoDate(ts),
+      close,
+    };
+    if (open != null && Number.isFinite(open)) bar.open = open;
+    if (high != null && Number.isFinite(high)) bar.high = high;
+    if (low != null && Number.isFinite(low)) bar.low = low;
+    if (volume != null && Number.isFinite(volume)) bar.volume = volume;
+    bars.push(bar);
+  });
 
   if (!points.length) {
     throw new Error('No data available for this date range.');
@@ -135,10 +113,73 @@ export async function fetchStockHistory(
 
   return {
     symbol: meta.symbol || cleaned,
-    range,
-    interval,
     currency: meta.currency,
     exchangeName: meta.exchangeName,
     points,
+    bars,
+  };
+}
+
+export async function getHistory(symbol: string): Promise<PriceBar[]> {
+  const upper = symbol.trim().toUpperCase();
+  if (!upper) throw new Error('Missing symbol');
+
+  const chart = await fetchYahooChart(upper, '2y', '1d');
+  return chart.bars;
+}
+
+export async function getInfo(symbol: string): Promise<FundamentalInfo> {
+  const upper = symbol.trim().toUpperCase();
+  if (!upper) throw new Error('Missing symbol');
+  return {};
+}
+
+function toDecision(probability: number): PredictionResponse['decision'] {
+  if (probability >= 0.6) return 'BUY';
+  if (probability >= 0.45) return 'HOLD';
+  return 'AVOID';
+}
+
+export async function fetchPrediction(symbol: string): Promise<PredictionResponse> {
+  const upper = symbol.trim().toUpperCase();
+  if (!upper) throw new Error('Missing symbol');
+
+  const [history, info] = await Promise.all([getHistory(upper), getInfo(upper)]);
+
+  if (!history.length) {
+    throw new Error('No price history available for prediction.');
+  }
+
+  if (info.currentPrice == null) {
+    info.currentPrice = history[history.length - 1]?.close;
+  }
+
+  const result = await predict(MODEL, history, info);
+  const probability = Number.isFinite(result.score)
+    ? Math.max(0, Math.min(1, result.score))
+    : 0;
+
+  return {
+    symbol: upper,
+    probability,
+    decision: toDecision(probability),
+    rationale: `Inference on the（${history.length} daily chart）has been executed using a local TFLite model in React Native`,
+  };
+}
+
+export async function fetchStockHistory(
+  symbol: string,
+  range: string = '3mo',
+  interval: string = '1d',
+): Promise<StockHistoryResponse> {
+  const chart = await fetchYahooChart(symbol, range, interval);
+
+  return {
+    symbol: chart.symbol,
+    range,
+    interval,
+    currency: chart.currency,
+    exchangeName: chart.exchangeName,
+    points: chart.points,
   };
 }

@@ -6,26 +6,18 @@
  */
 
 import React from 'react';
-import type {PropsWithChildren} from 'react';
-import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
-  View,
-} from 'react-native';
+import { StatusBar, StyleSheet} from 'react-native';
+import {SafeAreaProvider} from 'react-native-safe-area-context';
 
 import {HomeScreen} from './src/screens/HomeScreen';
 import {colors} from './src/theme/colors';
 
 function App() {
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaProvider>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       <HomeScreen />
-    </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 

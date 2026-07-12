@@ -35,9 +35,9 @@ export function StockSummaryCard({data}: Props) {
       </Text>
 
       <View style={styles.metaRow}>
-        <Text style={styles.meta}>區間: {data.range}</Text>
-        <Text style={styles.meta}>週期: {data.interval}</Text>
-        <Text style={styles.meta}>資料筆數: {data.points.length}</Text>
+        <Text style={styles.meta}>Range: {data.range}</Text>
+        <Text style={styles.meta}>Interval: {data.interval}</Text>
+        <Text style={styles.meta}>Number of data points: {data.points.length}</Text>
       </View>
     </View>
   );
