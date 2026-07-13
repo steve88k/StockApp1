@@ -40,9 +40,14 @@ async function fetchYahooChart(
     `&interval=${encodeURIComponent(interval)}` +
     `&includePrePost=false`;
 
+  // Yahoo often rejects bare mobile clients without a browser-like User-Agent.
   const response = await fetch(url, {
     method: 'GET',
-    headers: {Accept: 'application/json'},
+    headers: {
+      Accept: 'application/json',
+      'User-Agent':
+        'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+    },
   });
 
   if (!response.ok) {

@@ -105,6 +105,11 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+
+    // Keep TFLite models uncompressed so they can be memory-mapped / read reliably.
+    androidResources {
+        noCompress += ["tflite", "lite"]
+    }
 }
 
 dependencies {

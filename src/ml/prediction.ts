@@ -36,7 +36,12 @@ export async function predict(
     const score = scoreFromOutput(output);
     return {score, raw, input};
   } catch (error) {
-    console.error('TFLite prediction error:', error);
-    throw error;
+    const message =
+      error instanceof Error ? error.message : String(error ?? 'unknown error');
+    console.error('TFLite prediction error:', message, error);
+    throw new Error(
+      `TFLite inference failed: ${message}. ` +
+        'On Android release, the model must be bundled via require() (res/raw), not only copied into android/app/src/main/assets.',
+    );
   }
 }
