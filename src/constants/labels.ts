@@ -1,2 +1,2 @@
-export const APP_TITLE = 'The chance of a rise of over 30% ';
+export const APP_TITLE = 'Stock Rise Probability Predictor';
 export const DEFAULT_SYMBOL = 'AAPL';

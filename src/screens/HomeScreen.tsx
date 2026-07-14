@@ -51,7 +51,7 @@ export function HomeScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>{APP_TITLE}</Text>
       <Text style={styles.subtitle}>
-        Fetches the stock price data + Offline inference
+        Real-time stock data + Offline AI prediction
       </Text>
 
       <SearchBar

@@ -12,7 +12,7 @@ export function ResultCard({data}: Props) {
     <View style={styles.card}>
       <Text style={styles.symbol}>{data.symbol}</Text>
       <Text style={styles.probability}>{(data.probability * 100).toFixed(1)}%</Text>
-      <Text style={styles.decision}>Suggestion: {data.decision}</Text>
+      <Text style={styles.decision}>Recommendation: {data.decision}</Text>
       <Text style={styles.rationale}>{data.rationale}</Text>
     </View>
   );

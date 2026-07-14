@@ -1,4 +1,5 @@
 {
   "name": "StockApp",
-  "displayName": "StockApp"
+  "displayName": "StockApp",
+  "description": "React Native stock prediction app with offline TFLite inference"
 }

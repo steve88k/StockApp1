@@ -21,7 +21,7 @@ export function StockLineChart({data}: Props) {
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Closing price trend</Text>
+      <Text style={styles.title}>Closing Price Trend</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <LineChart
           data={{labels, datasets: [{data: prices}]}}

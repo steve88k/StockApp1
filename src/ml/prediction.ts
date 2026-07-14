@@ -17,6 +17,12 @@ function scoreFromOutput(output: ArrayBuffer[]): number {
   return Number.isFinite(score) ? score : 0;
 }
 
+/**
+ * Run TFLite model inference for stock prediction.
+ * @param modelPath - The required model asset (use require('../assets/xxx.tflite'))
+ * @param history - Historical price bars
+ * @param info - Fundamental information
+ */
 export async function predict(
   modelPath: any,
   history: PriceBar[],

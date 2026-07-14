@@ -21,7 +21,7 @@ export function SearchBar({value, onChangeText, onSubmit, loading = false}: Prop
         style={styles.input}
       />
       <Pressable onPress={onSubmit} disabled={loading} style={styles.button}>
-        <Text style={styles.buttonText}>{loading ? 'Querying...' : 'Query'}</Text>
+        <Text style={styles.buttonText}>{loading ? 'Predicting...' : 'Search'}</Text>
       </Pressable>
     </View>
   );

@@ -5,6 +5,11 @@ import {StockHistoryResponse, StockPoint} from '../types/stock';
 
 const MODEL = require('../assets/us_market_model.tflite');
 
+// Helper to clean and normalize stock symbol
+function cleanSymbol(symbol: string): string {
+  return symbol.trim().toUpperCase();
+}
+
 function formatDateLabel(unixSeconds: number) {
   const d = new Date(unixSeconds * 1000);
   const month = `${d.getMonth() + 1}`.padStart(2, '0');
@@ -29,7 +34,7 @@ async function fetchYahooChart(
   range: string,
   interval: string,
 ): Promise<ChartParseResult> {
-  const cleaned = symbol.trim().toUpperCase();
+  const cleaned = cleanSymbol(symbol);
   if (!cleaned) {
     throw new Error('Please enter the ticker symbol first.');
   }
@@ -51,7 +56,7 @@ async function fetchYahooChart(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch stock data：HTTP ${response.status}`);
+    throw new Error(`Failed to fetch stock data: HTTP ${response.status}`);
   }
 
   const json = await response.json();
@@ -59,7 +64,7 @@ async function fetchYahooChart(
   const error = json?.chart?.error;
 
   if (error) {
-    throw new Error(error?.description || 'Yahoo Finance Return an error');
+    throw new Error(error?.description || 'Yahoo Finance returned an error');
   }
 
   if (!result) {
@@ -126,7 +131,7 @@ async function fetchYahooChart(
 }
 
 export async function getHistory(symbol: string): Promise<PriceBar[]> {
-  const upper = symbol.trim().toUpperCase();
+  const upper = cleanSymbol(symbol);
   if (!upper) throw new Error('Missing symbol');
 
   const chart = await fetchYahooChart(upper, '2y', '1d');
@@ -134,8 +139,9 @@ export async function getHistory(symbol: string): Promise<PriceBar[]> {
 }
 
 export async function getInfo(symbol: string): Promise<FundamentalInfo> {
-  const upper = symbol.trim().toUpperCase();
+  const upper = cleanSymbol(symbol);
   if (!upper) throw new Error('Missing symbol');
+  // TODO: Implement real fundamental data fetch if needed
   return {};
 }
 
@@ -146,7 +152,7 @@ function toDecision(probability: number): PredictionResponse['decision'] {
 }
 
 export async function fetchPrediction(symbol: string): Promise<PredictionResponse> {
-  const upper = symbol.trim().toUpperCase();
+  const upper = cleanSymbol(symbol);
   if (!upper) throw new Error('Missing symbol');
 
   const [history, info] = await Promise.all([getHistory(upper), getInfo(upper)]);
@@ -168,7 +174,7 @@ export async function fetchPrediction(symbol: string): Promise<PredictionRespons
     symbol: upper,
     probability,
     decision: toDecision(probability),
-    rationale: `Inference on the（${history.length} daily chart）has been executed using a local TFLite model in React Native`,
+    rationale: `Local TFLite model inference completed on ${history.length} days of daily chart data.`,
   };
 }
 

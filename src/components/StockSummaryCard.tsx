@@ -37,7 +37,7 @@ export function StockSummaryCard({data}: Props) {
       <View style={styles.metaRow}>
         <Text style={styles.meta}>Range: {data.range}</Text>
         <Text style={styles.meta}>Interval: {data.interval}</Text>
-        <Text style={styles.meta}>Number of data points: {data.points.length}</Text>
+        <Text style={styles.meta}>Data points: {data.points.length}</Text>
       </View>
     </View>
   );
