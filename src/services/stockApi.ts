@@ -7,6 +7,7 @@ import {
   predict,
 } from '../ml/prediction';
 import {FundamentalInfo, PriceBar} from '../ml/featureBuilder';
+import {computeSentimentFeatures} from '../ml/sentiment';
 import {StockHistoryResponse, StockPoint} from '../types/stock';
 
 const MODEL = require('../assets/us_market_model.tflite');
@@ -176,7 +177,7 @@ function toDecision(
 }
 
 /**
- * Offline multi-horizon prediction.
+ * Offline multi-horizon prediction + on-device news sentiment.
  * @param horizon 3m | 6m | 9m | 12m
  * @param growth 10 | 20 | 30  (percent threshold)
  */
@@ -188,9 +189,11 @@ export async function fetchPrediction(
   const upper = cleanSymbol(symbol);
   if (!upper) throw new Error('Missing symbol');
 
-  const [history, info] = await Promise.all([
+  // Parallel: price history + fundamentals + news sentiment
+  const [history, info, sentiment] = await Promise.all([
     getHistory(upper),
     getInfo(upper),
+    computeSentimentFeatures(upper),
   ]);
 
   if (!history.length) {
@@ -201,15 +204,20 @@ export async function fetchPrediction(
     info.currentPrice = history[history.length - 1]?.close;
   }
 
-  const result = await predict(MODEL, history, info);
+  const result = await predict(MODEL, history, info, sentiment);
   const key = outputKey(horizon, growth);
   const probability = pickProbability(result.probs, horizon, growth);
+
+  const sentNote =
+    sentiment.news_count_7d > 0
+      ? ` | sentiment ${sentiment.sentiment_score.toFixed(2)} (${sentiment.news_count_7d} news)`
+      : ' | sentiment=0 (no recent news / model missing)';
 
   return {
     symbol: upper,
     probability,
     decision: toDecision(probability, key),
-    rationale: `≥${growth}% in ${horizon} | TFLite on ${history.length} daily bars (sentiment reserved).`,
+    rationale: `≥${growth}% in ${horizon} | TFLite on ${history.length} daily bars${sentNote}`,
   };
 }
 
