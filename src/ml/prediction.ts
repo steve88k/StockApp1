@@ -1,6 +1,17 @@
 import {loadTensorflowModel} from 'react-native-fast-tflite';
 import {buildModelInput, FundamentalInfo, PriceBar} from './featureBuilder';
 import {standardizeInput} from './scaler';
+import outputCols from '../assets/output_cols.json';
+
+export type Horizon = '3m' | '6m' | '9m' | '12m';
+export type Growth = '10' | '20' | '30';
+
+type OutputMeta = {
+  output_cols: string[];
+  index_map: Record<string, number>;
+};
+
+const meta = outputCols as OutputMeta;
 
 function toArrayBuffer(values: Float32Array): ArrayBuffer {
   return values.buffer.slice(
@@ -9,19 +20,30 @@ function toArrayBuffer(values: Float32Array): ArrayBuffer {
   ) as ArrayBuffer;
 }
 
-function scoreFromOutput(output: ArrayBuffer[]): number {
-  const first = output?.[0];
-  if (!first) return 0;
-  const values = new Float32Array(first);
-  const score = Number(values[0]);
-  return Number.isFinite(score) ? score : 0;
+/** Build key used in output_cols / threshold map, e.g. y_12m_30 */
+export function outputKey(horizon: Horizon, growth: Growth): string {
+  return `y_${horizon}_${growth}`;
+}
+
+/** Pick one probability from the 12-dim model output. */
+export function pickProbability(
+  probs: Float32Array,
+  horizon: Horizon,
+  growth: Growth,
+): number {
+  const key = outputKey(horizon, growth);
+  const idx = meta.index_map?.[key];
+  const i =
+    typeof idx === 'number'
+      ? idx
+      : Math.max(0, meta.output_cols?.indexOf(key) ?? 0);
+  const v = Number(probs[i] ?? 0);
+  return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
 }
 
 /**
- * Run TFLite model inference for stock prediction.
- * @param modelPath - The required model asset (use require('../assets/xxx.tflite'))
- * @param history - Historical price bars
- * @param info - Fundamental information
+ * Run TFLite multi-output inference.
+ * Returns all 12 probabilities; caller selects by horizon + growth.
  */
 export async function predict(
   modelPath: any,
@@ -39,8 +61,13 @@ export async function predict(
     const raw = buildModelInput(history, info);
     const input = standardizeInput(raw);
     const output = await model.run([toArrayBuffer(input)]);
-    const score = scoreFromOutput(output);
-    return {score, raw, input};
+
+    const first = output?.[0];
+    const probs = first
+      ? new Float32Array(first)
+      : new Float32Array(meta.output_cols?.length || 12);
+
+    return {probs, raw, input};
   } catch (error) {
     const message =
       error instanceof Error ? error.message : String(error ?? 'unknown error');
