@@ -6,13 +6,15 @@
  *   - sentiment.tflite
  *   - sentiment_vocab.json   // string[] of tokens, index 0="", 1="[UNK]", ...
  *
- * Convert from training output:
+ * Convert from training output (run once):
  *   python -c "
- * from pathlib import Path
- * lines = Path('output/sentiment_model/vectorizer_vocab.txt').read_text().splitlines()
- * import json; Path('src/assets/sentiment_vocab.json').write_text(json.dumps(lines))
+ * from pathlib import Path, json
+ * lines = Path('output/sentiment_model/vectorizer_vocab.txt').read_text(encoding='utf-8').splitlines()
+ * Path('src/assets/sentiment_vocab.json').write_text(json.dumps(lines), encoding='utf-8')
  * "
- * then copy output/sentiment_model/sentiment.tflite → src/assets/
+ * then copy:
+ *   output/sentiment_model/sentiment.tflite  →  src/assets/sentiment.tflite
+ *   (and also into android/app/src/main/assets/ if you use that path)
  */
 
 import {loadTensorflowModel} from 'react-native-fast-tflite';
@@ -32,22 +34,30 @@ const ZERO: SentimentFeatures = {
   news_count_7d: 0,
 };
 
-let vocab: string[] | null = null;
 let vocabMap: Map<string, number> | null = null;
 let sentimentModel: any = null;
 let modelLoadFailed = false;
+
+function toArrayBuffer(values: Int32Array): ArrayBuffer {
+  return values.buffer.slice(
+    values.byteOffset,
+    values.byteOffset + values.byteLength,
+  ) as ArrayBuffer;
+}
 
 async function ensureVocab(): Promise<Map<string, number> | null> {
   if (vocabMap) return vocabMap;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const raw = require('../assets/sentiment_vocab.json');
-    vocab = Array.isArray(raw) ? raw : [];
+    const list: string[] = Array.isArray(raw) ? raw : [];
     vocabMap = new Map();
-    vocab.forEach((tok, i) => vocabMap!.set(String(tok).toLowerCase(), i));
+    list.forEach((tok, i) => vocabMap!.set(String(tok).toLowerCase(), i));
     return vocabMap;
   } catch (e) {
-    console.warn('[sentiment] vocab missing → features stay 0. Add src/assets/sentiment_vocab.json');
+    console.warn(
+      '[sentiment] vocab missing → features stay 0. Add src/assets/sentiment_vocab.json',
+    );
     return null;
   }
 }
@@ -89,11 +99,11 @@ async function scoreTexts(texts: string[]): Promise<number[]> {
   const scores: number[] = [];
   for (const t of texts) {
     try {
-      const ids = tokenize(t, map);
-      // fast-tflite expects ArrayBuffer-like; shape [1, 64]
-      const input = new Int32Array(ids);
-      const output = await model.run([input.buffer]);
-      const probs = output?.[0] ? new Float32Array(output[0]) : new Float32Array(3);
+      const ids = tokenize(t, map); // shape conceptually [1, 64]
+      const output = await model.run([toArrayBuffer(ids)]);
+      const probs = output?.[0]
+        ? new Float32Array(output[0])
+        : new Float32Array(3);
       // P_pos - P_neg  (indices 2 - 0)
       const score = Number(probs[2] ?? 0) - Number(probs[0] ?? 0);
       scores.push(Number.isFinite(score) ? score : 0);
@@ -111,7 +121,10 @@ type YahooNewsItem = {
   publisher?: string;
 };
 
-async function fetchYahooNews(symbol: string, count = 25): Promise<YahooNewsItem[]> {
+async function fetchYahooNews(
+  symbol: string,
+  count = 25,
+): Promise<YahooNewsItem[]> {
   const cleaned = symbol.trim().toUpperCase();
   if (!cleaned) return [];
 
@@ -163,18 +176,27 @@ export async function computeSentimentFeatures(
       const age = now - ts * 1000;
       if (age < 0 || age > sevenDaysMs) return false;
       // Prefer articles that mention the ticker; keep others if few results
-      const related = (item.relatedTickers ?? []).map(t => String(t).toUpperCase());
+      const related = (item.relatedTickers ?? []).map(t =>
+        String(t).toUpperCase(),
+      );
       if (related.length && !related.includes(upper)) return false;
       return Boolean(item.title && item.title.trim());
     });
 
     // Fallback: if filter too strict, use all recent titles
-    const pool = recent.length >= 3 ? recent : items.filter(item => {
-      const ts = Number(item.providerPublishTime);
-      if (!Number.isFinite(ts)) return false;
-      const age = now - ts * 1000;
-      return age >= 0 && age <= sevenDaysMs && Boolean(item.title?.trim());
-    });
+    const pool =
+      recent.length >= 3
+        ? recent
+        : items.filter(item => {
+            const ts = Number(item.providerPublishTime);
+            if (!Number.isFinite(ts)) return false;
+            const age = now - ts * 1000;
+            return (
+              age >= 0 &&
+              age <= sevenDaysMs &&
+              Boolean(item.title?.trim())
+            );
+          });
 
     if (!pool.length) return {...ZERO};
 
@@ -183,13 +205,11 @@ export async function computeSentimentFeatures(
     const valid = scores.filter(s => Number.isFinite(s));
     if (!valid.length) return {...ZERO};
 
-    const mean =
-      valid.reduce((a, b) => a + b, 0) / valid.length;
+    const mean = valid.reduce((a, b) => a + b, 0) / valid.length;
 
     // For a single “now” prediction we approximate:
-    // sentiment_score ≈ latest / mean of recent
-    // sentiment_ma_7d ≈ same mean (no daily history on device)
-    // news_count_7d = number of scored articles in window
+    // sentiment_score / sentiment_ma_7d ≈ mean of recent titles
+    // news_count_7d = number of scored articles in the 7-day window
     return {
       sentiment_score: mean,
       sentiment_ma_7d: mean,
