@@ -1,6 +1,7 @@
 import {loadTensorflowModel} from 'react-native-fast-tflite';
 import {buildModelInput, FundamentalInfo, PriceBar} from './featureBuilder';
 import {standardizeInput} from './scaler';
+import type {SentimentFeatures} from './sentiment';
 import outputCols from '../assets/output_cols.json';
 
 export type Horizon = '3m' | '6m' | '9m' | '12m';
@@ -49,6 +50,7 @@ export async function predict(
   modelPath: any,
   history: PriceBar[],
   info: FundamentalInfo,
+  sentiment?: Partial<SentimentFeatures> | null,
 ) {
   if (!modelPath) {
     throw new Error(
@@ -58,7 +60,7 @@ export async function predict(
 
   try {
     const model = await loadTensorflowModel(modelPath, []);
-    const raw = buildModelInput(history, info);
+    const raw = buildModelInput(history, info, sentiment);
     const input = standardizeInput(raw);
     const output = await model.run([toArrayBuffer(input)]);
 
