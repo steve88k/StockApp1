@@ -1,4 +1,5 @@
 import featureCols from '../assets/feature_cols.json';
+import type {SentimentFeatures} from './sentiment';
 
 export type PriceBar = {
   date: string | number;
@@ -92,7 +93,11 @@ function rollingMin(values: number[], n: number): number {
   return arr.length ? Math.min(...arr) : 0;
 }
 
-export function buildFeatureMap(history: PriceBar[], info: FundamentalInfo): Record<string, number> {
+export function buildFeatureMap(
+  history: PriceBar[],
+  info: FundamentalInfo,
+  sentiment?: Partial<SentimentFeatures> | null,
+): Record<string, number> {
   const rows = [...history]
     .filter(item => Number.isFinite(Number(item.close)))
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -113,6 +118,10 @@ export function buildFeatureMap(history: PriceBar[], info: FundamentalInfo): Rec
   const high252 = rollingMax(highs, 252);
   const low252 = rollingMin(lows, 252);
   const dollarVolumes = closes.map((close, i) => close * toFinite(volumes[i]));
+
+  const sScore = toFinite(sentiment?.sentiment_score);
+  const sMa = toFinite(sentiment?.sentiment_ma_7d);
+  const sCnt = toFinite(sentiment?.news_count_7d);
 
   return {
     open: opens.at(-1) ?? 0,
@@ -187,14 +196,18 @@ export function buildFeatureMap(history: PriceBar[], info: FundamentalInfo): Rec
     shortPercentOfFloat: Number(info.shortPercentOfFloat ?? 0),
     ['52WeekChange']: Number(info['52WeekChange'] ?? 0),
     SandP52WeekChange: Number(info.SandP52WeekChange ?? 0),
-    // Reserved until on-device news scoring is wired
-    sentiment_score: 0,
-    sentiment_ma_7d: 0,
-    news_count_7d: 0,
+    // On-device news scoring (falls back to 0 if assets / network unavailable)
+    sentiment_score: sScore,
+    sentiment_ma_7d: sMa,
+    news_count_7d: sCnt,
   };
 }
 
-export function buildModelInput(history: PriceBar[], info: FundamentalInfo): Float32Array {
-  const featureMap = buildFeatureMap(history, info);
+export function buildModelInput(
+  history: PriceBar[],
+  info: FundamentalInfo,
+  sentiment?: Partial<SentimentFeatures> | null,
+): Float32Array {
+  const featureMap = buildFeatureMap(history, info, sentiment);
   return new Float32Array((featureCols as string[]).map(col => toFinite(featureMap[col])));
 }
