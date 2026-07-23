@@ -1,11 +1,32 @@
 import {PredictionResponse} from '../types/prediction';
-import {predict} from '../ml/prediction';
+import {
+  Growth,
+  Horizon,
+  outputKey,
+  pickProbability,
+  predict,
+} from '../ml/prediction';
 import {FundamentalInfo, PriceBar} from '../ml/featureBuilder';
 import {StockHistoryResponse, StockPoint} from '../types/stock';
 
 const MODEL = require('../assets/us_market_model.tflite');
 
-// Helper to clean and normalize stock symbol
+/** Decision thresholds from threshold_summary.csv (best F1 per head). */
+const DECISION_THR: Record<string, number> = {
+  y_3m_10: 0.1,
+  y_3m_20: 0.12,
+  y_3m_30: 0.11,
+  y_6m_10: 0.11,
+  y_6m_20: 0.09,
+  y_6m_30: 0.11,
+  y_9m_10: 0.16,
+  y_9m_20: 0.12,
+  y_9m_30: 0.11,
+  y_12m_10: 0.18,
+  y_12m_20: 0.11,
+  y_12m_30: 0.11,
+};
+
 function cleanSymbol(symbol: string): string {
   return symbol.trim().toUpperCase();
 }
@@ -45,7 +66,6 @@ async function fetchYahooChart(
     `&interval=${encodeURIComponent(interval)}` +
     `&includePrePost=false`;
 
-  // Yahoo often rejects bare mobile clients without a browser-like User-Agent.
   const response = await fetch(url, {
     method: 'GET',
     headers: {
@@ -130,6 +150,7 @@ async function fetchYahooChart(
   };
 }
 
+/** History for model features — need ~252 trading days. */
 export async function getHistory(symbol: string): Promise<PriceBar[]> {
   const upper = cleanSymbol(symbol);
   if (!upper) throw new Error('Missing symbol');
@@ -141,21 +162,36 @@ export async function getHistory(symbol: string): Promise<PriceBar[]> {
 export async function getInfo(symbol: string): Promise<FundamentalInfo> {
   const upper = cleanSymbol(symbol);
   if (!upper) throw new Error('Missing symbol');
-  // TODO: Implement real fundamental data fetch if needed
   return {};
 }
 
-function toDecision(probability: number): PredictionResponse['decision'] {
-  if (probability >= 0.6) return 'BUY';
-  if (probability >= 0.45) return 'HOLD';
+function toDecision(
+  probability: number,
+  key: string,
+): PredictionResponse['decision'] {
+  const thr = DECISION_THR[key] ?? 0.15;
+  if (probability >= thr + 0.1) return 'BUY';
+  if (probability >= thr) return 'HOLD';
   return 'AVOID';
 }
 
-export async function fetchPrediction(symbol: string): Promise<PredictionResponse> {
+/**
+ * Offline multi-horizon prediction.
+ * @param horizon 3m | 6m | 9m | 12m
+ * @param growth 10 | 20 | 30  (percent threshold)
+ */
+export async function fetchPrediction(
+  symbol: string,
+  horizon: Horizon = '12m',
+  growth: Growth = '30',
+): Promise<PredictionResponse> {
   const upper = cleanSymbol(symbol);
   if (!upper) throw new Error('Missing symbol');
 
-  const [history, info] = await Promise.all([getHistory(upper), getInfo(upper)]);
+  const [history, info] = await Promise.all([
+    getHistory(upper),
+    getInfo(upper),
+  ]);
 
   if (!history.length) {
     throw new Error('No price history available for prediction.');
@@ -166,15 +202,14 @@ export async function fetchPrediction(symbol: string): Promise<PredictionRespons
   }
 
   const result = await predict(MODEL, history, info);
-  const probability = Number.isFinite(result.score)
-    ? Math.max(0, Math.min(1, result.score))
-    : 0;
+  const key = outputKey(horizon, growth);
+  const probability = pickProbability(result.probs, horizon, growth);
 
   return {
     symbol: upper,
     probability,
-    decision: toDecision(probability),
-    rationale: `Local TFLite model inference completed on ${history.length} days of daily chart data.`,
+    decision: toDecision(probability, key),
+    rationale: `≥${growth}% in ${horizon} | TFLite on ${history.length} daily bars (sentiment reserved).`,
   };
 }
 
