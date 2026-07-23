@@ -70,5 +70,8 @@
   "shortRatio",
   "shortPercentOfFloat",
   "52WeekChange",
-  "SandP52WeekChange"
+  "SandP52WeekChange",
+  "sentiment_score",
+  "sentiment_ma_7d",
+  "news_count_7d"
 ]
