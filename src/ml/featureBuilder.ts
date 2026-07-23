@@ -187,6 +187,10 @@ export function buildFeatureMap(history: PriceBar[], info: FundamentalInfo): Rec
     shortPercentOfFloat: Number(info.shortPercentOfFloat ?? 0),
     ['52WeekChange']: Number(info['52WeekChange'] ?? 0),
     SandP52WeekChange: Number(info.SandP52WeekChange ?? 0),
+    // Reserved until on-device news scoring is wired
+    sentiment_score: 0,
+    sentiment_ma_7d: 0,
+    news_count_7d: 0,
   };
 }
 
