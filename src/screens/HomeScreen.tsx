@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -13,6 +13,10 @@ import {StateCard} from '../components/StateCard';
 import {StockLineChart} from '../components/StockLineChart';
 import {StockSummaryCard} from '../components/StockSummaryCard';
 import {APP_TITLE, DEFAULT_SYMBOL} from '../constants/labels';
+import {
+  isFavorite as checkIsFavorite,
+  toggleFavorite,
+} from '../services/favoritesStorage';
 import {fetchPrediction, fetchStockHistory} from '../services/stockApi';
 import {Growth, Horizon} from '../ml/prediction';
 import {PredictionResponse} from '../types/prediction';
@@ -22,7 +26,16 @@ import {colors} from '../theme/colors';
 const HORIZONS: Horizon[] = ['3m', '6m', '9m', '12m'];
 const GROWTHS: Growth[] = ['10', '20', '30'];
 
-export function HomeScreen() {
+type Props = {
+  /** Prefill / search this symbol when navigating from favorites */
+  initialSymbol?: string | null;
+  onInitialSymbolConsumed?: () => void;
+};
+
+export function HomeScreen({
+  initialSymbol,
+  onInitialSymbolConsumed,
+}: Props) {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
   const [horizon, setHorizon] = useState<Horizon>('12m');
   const [growth, setGrowth] = useState<Growth>('30');
@@ -30,22 +43,42 @@ export function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PredictionResponse | null>(null);
   const [stockData, setStockData] = useState<StockHistoryResponse | null>(null);
+  const [favorited, setFavorited] = useState(false);
+  const [favoriteBusy, setFavoriteBusy] = useState(false);
+
+  const syncFavoriteState = async (ticker: string) => {
+    const cleaned = ticker.trim().toUpperCase();
+    if (!cleaned) {
+      setFavorited(false);
+      return;
+    }
+    const fav = await checkIsFavorite(cleaned);
+    setFavorited(fav);
+  };
+
+  // Keep star state in sync with the typed ticker
+  useEffect(() => {
+    syncFavoriteState(symbol);
+  }, [symbol]);
 
   const handleSubmit = async (
     nextHorizon: Horizon = horizon,
     nextGrowth: Growth = growth,
+    nextSymbol?: string,
   ) => {
-    const cleaned = symbol.trim().toUpperCase();
+    const cleaned = (nextSymbol ?? symbol).trim().toUpperCase();
     if (!cleaned) {
       setError('Please enter the stock ticker first.');
       setData(null);
       setStockData(null);
+      setFavorited(false);
       return;
     }
 
     try {
       setLoading(true);
       setError(null);
+      setSymbol(cleaned);
 
       const [predictionResult, stockHistoryResult] = await Promise.all([
         fetchPrediction(cleaned, nextHorizon, nextGrowth),
@@ -54,6 +87,7 @@ export function HomeScreen() {
 
       setData(predictionResult);
       setStockData(stockHistoryResult);
+      await syncFavoriteState(cleaned);
     } catch (e: any) {
       setError(
         e?.message || 'Search failed. Please enter the ticker symbol again.',
@@ -64,6 +98,22 @@ export function HomeScreen() {
       setLoading(false);
     }
   };
+
+  // Open symbol from favorites tab
+  useEffect(() => {
+    if (!initialSymbol) {
+      return;
+    }
+    const cleaned = initialSymbol.trim().toUpperCase();
+    if (!cleaned) {
+      onInitialSymbolConsumed?.();
+      return;
+    }
+    setSymbol(cleaned);
+    handleSubmit(horizon, growth, cleaned);
+    onInitialSymbolConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSymbol]);
 
   const onSelectHorizon = (h: Horizon) => {
     setHorizon(h);
@@ -78,6 +128,28 @@ export function HomeScreen() {
       handleSubmit(horizon, g);
     }
   };
+
+  const onToggleFavorite = async () => {
+    const cleaned = (data?.symbol || symbol).trim().toUpperCase();
+    if (!cleaned) {
+      setError('Please enter the stock ticker first.');
+      return;
+    }
+
+    try {
+      setFavoriteBusy(true);
+      const result = await toggleFavorite(cleaned, horizon, growth);
+      setFavorited(result.isFavorite);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to update favorites.');
+    } finally {
+      setFavoriteBusy(false);
+    }
+  };
+
+  const canFavorite = Boolean(
+    (data?.symbol || symbol.trim()) && !loading,
+  );
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -130,6 +202,32 @@ export function HomeScreen() {
           ))}
         </View>
       </View>
+
+      {canFavorite ? (
+        <Pressable
+          onPress={onToggleFavorite}
+          disabled={favoriteBusy}
+          style={[
+            styles.favoriteBtn,
+            favorited && styles.favoriteBtnActive,
+            favoriteBusy && styles.favoriteBtnDisabled,
+          ]}>
+          {favoriteBusy ? (
+            <ActivityIndicator
+              size="small"
+              color={favorited ? '#1a1400' : colors.primary}
+            />
+          ) : (
+            <Text
+              style={[
+                styles.favoriteBtnText,
+                favorited && styles.favoriteBtnTextActive,
+              ]}>
+              {favorited ? '★ Favorited' : '☆ Add to favorites'}
+            </Text>
+          )}
+        </Pressable>
+      ) : null}
 
       <View style={styles.content}>
         {loading ? (
@@ -203,6 +301,32 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: '#fff',
+  },
+  favoriteBtn: {
+    alignSelf: 'flex-start',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minHeight: 42,
+    justifyContent: 'center',
+  },
+  favoriteBtnActive: {
+    backgroundColor: '#f5c542',
+    borderColor: '#f5c542',
+  },
+  favoriteBtnDisabled: {
+    opacity: 0.7,
+  },
+  favoriteBtnText: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  favoriteBtnTextActive: {
+    color: '#1a1400',
   },
   content: {
     minHeight: 320,
