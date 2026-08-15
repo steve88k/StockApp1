@@ -1,10 +1,11 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import {FavoriteCard} from '../components/FavoriteCard';
@@ -50,8 +51,17 @@ async function loadLiveItem(fav: FavoriteStock): Promise<FavoriteLiveItem> {
   }
 }
 
+function matchesQuery(item: FavoriteLiveItem, query: string): boolean {
+  const q = query.trim().toUpperCase();
+  if (!q) {
+    return true;
+  }
+  return item.symbol.toUpperCase().includes(q);
+}
+
 export function FavoritesScreen({onSelectSymbol}: Props) {
   const [items, setItems] = useState<FavoriteLiveItem[]>([]);
+  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,9 +104,17 @@ export function FavoritesScreen({onSelectSymbol}: Props) {
   };
 
   const isBusy = loading || refreshing;
+  const trimmedQuery = query.trim();
+  const filteredItems = useMemo(
+    () => items.filter(item => matchesQuery(item, query)),
+    [items, query],
+  );
+  const showSearch = !loading && !error && (items.length > 0 || trimmedQuery.length > 0);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled">
       <View style={styles.headerRow}>
         <View style={styles.headerText}>
           <Text style={styles.title}>Favorites</Text>
@@ -116,6 +134,39 @@ export function FavoritesScreen({onSelectSymbol}: Props) {
         </Pressable>
       </View>
 
+      {showSearch ? (
+        <View style={styles.searchRow}>
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search favorites by ticker, e.g. AAPL"
+            placeholderTextColor={colors.muted}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            autoComplete="off"
+            returnKeyType="search"
+            style={styles.searchInput}
+            accessibilityLabel="Search favorites"
+          />
+          {trimmedQuery.length > 0 ? (
+            <Pressable
+              onPress={() => setQuery('')}
+              style={styles.clearBtn}
+              accessibilityLabel="Clear search">
+              <Text style={styles.clearText}>✕</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
+      {showSearch && items.length > 0 ? (
+        <Text style={styles.resultCount}>
+          {trimmedQuery
+            ? `${filteredItems.length} of ${items.length} favorites`
+            : `${items.length} favorite${items.length === 1 ? '' : 's'}`}
+        </Text>
+      ) : null}
+
       <View style={styles.content}>
         {loading ? (
           <View style={styles.loadingBox}>
@@ -131,9 +182,14 @@ export function FavoritesScreen({onSelectSymbol}: Props) {
             title="No favorites yet"
             message="Search a stock and tap ★ Favorite to pin it here."
           />
+        ) : filteredItems.length === 0 ? (
+          <StateCard
+            title="No matching favorites"
+            message={`No saved ticker matches "${trimmedQuery}".`}
+          />
         ) : (
           <View style={styles.list}>
-            {items.map(item => (
+            {filteredItems.map(item => (
               <FavoriteCard
                 key={item.symbol}
                 item={item}
@@ -194,6 +250,42 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',
+  },
+  searchRow: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  searchInput: {
+    backgroundColor: colors.input,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    color: colors.text,
+    fontSize: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingRight: 44,
+  },
+  clearBtn: {
+    position: 'absolute',
+    right: 12,
+    height: 28,
+    width: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.cardAlt,
+  },
+  clearText: {
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  resultCount: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: -8,
   },
   content: {
     minHeight: 240,
