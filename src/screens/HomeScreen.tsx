@@ -7,6 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import {DiscreteSlider} from '../components/DiscreteSlider';
 import {SearchBar} from '../components/SearchBar';
 import {ResultCard} from '../components/ResultCard';
 import {StateCard} from '../components/StateCard';
@@ -45,6 +46,7 @@ export function HomeScreen({
   const [stockData, setStockData] = useState<StockHistoryResponse | null>(null);
   const [favorited, setFavorited] = useState(false);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [sliding, setSliding] = useState(false);
 
   const syncFavoriteState = async (ticker: string) => {
     const cleaned = ticker.trim().toUpperCase();
@@ -115,15 +117,13 @@ export function HomeScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSymbol]);
 
-  const onSelectHorizon = (h: Horizon) => {
-    setHorizon(h);
+  const onHorizonComplete = (h: Horizon) => {
     if (symbol.trim()) {
       handleSubmit(h, growth);
     }
   };
 
-  const onSelectGrowth = (g: Growth) => {
-    setGrowth(g);
+  const onGrowthComplete = (g: Growth) => {
     if (symbol.trim()) {
       handleSubmit(horizon, g);
     }
@@ -152,7 +152,10 @@ export function HomeScreen({
   );
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      scrollEnabled={!sliding}
+      keyboardShouldPersistTaps="handled">
       <Text style={styles.title}>{APP_TITLE}</Text>
       <Text style={styles.subtitle}>
         Real-time stock data + Offline AI prediction
@@ -166,41 +169,32 @@ export function HomeScreen({
       />
 
       <View style={styles.selectorBlock}>
-        <Text style={styles.selectorLabel}>Time horizon</Text>
-        <View style={styles.chipRow}>
-          {HORIZONS.map(h => (
-            <Pressable
-              key={h}
-              onPress={() => onSelectHorizon(h)}
-              style={[styles.chip, horizon === h && styles.chipActive]}>
-              <Text
-                style={[
-                  styles.chipText,
-                  horizon === h && styles.chipTextActive,
-                ]}>
-                {h}
-              </Text>
-            </Pressable>
-          ))}
+        <View style={styles.selectorHeader}>
+          <Text style={styles.selectorLabel}>Time horizon</Text>
+          <Text style={styles.selectorValue}>{horizon}</Text>
         </View>
+        <DiscreteSlider
+          values={HORIZONS}
+          value={horizon}
+          onChange={setHorizon}
+          onChangeComplete={onHorizonComplete}
+          onSlidingStart={() => setSliding(true)}
+          onSlidingEnd={() => setSliding(false)}
+        />
 
-        <Text style={styles.selectorLabel}>Target gain</Text>
-        <View style={styles.chipRow}>
-          {GROWTHS.map(g => (
-            <Pressable
-              key={g}
-              onPress={() => onSelectGrowth(g)}
-              style={[styles.chip, growth === g && styles.chipActive]}>
-              <Text
-                style={[
-                  styles.chipText,
-                  growth === g && styles.chipTextActive,
-                ]}>
-                ≥{g}%
-              </Text>
-            </Pressable>
-          ))}
+        <View style={styles.selectorHeader}>
+          <Text style={styles.selectorLabel}>Target gain</Text>
+          <Text style={styles.selectorValue}>≥{growth}%</Text>
         </View>
+        <DiscreteSlider
+          values={GROWTHS}
+          value={growth}
+          onChange={setGrowth}
+          onChangeComplete={onGrowthComplete}
+          onSlidingStart={() => setSliding(true)}
+          onSlidingEnd={() => setSliding(false)}
+          formatLabel={g => `≥${g}%`}
+        />
       </View>
 
       {canFavorite ? (
@@ -270,37 +264,22 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   selectorBlock: {
-    gap: 10,
+    gap: 12,
+  },
+  selectorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   selectorLabel: {
     color: colors.muted,
     fontSize: 13,
     fontWeight: '600',
   },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  chipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  chipText: {
+  selectorValue: {
     color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  chipTextActive: {
-    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
   },
   favoriteBtn: {
     alignSelf: 'flex-start',
