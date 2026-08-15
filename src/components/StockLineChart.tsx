@@ -3,12 +3,17 @@ import {Dimensions, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {LineChart} from 'react-native-chart-kit';
 import {StockHistoryResponse} from '../types/stock';
 import {colors} from '../theme/colors';
+import {
+  CHART_DISPLAY_LABELS,
+  ChartDisplayRange,
+} from '../utils/chartRange';
 
 type Props = {
   data: StockHistoryResponse;
+  displayRange?: ChartDisplayRange;
 };
 
-export function StockLineChart({data}: Props) {
+export function StockLineChart({data, displayRange}: Props) {
   const screenWidth = Dimensions.get('window').width;
   const chartWidth = Math.max(screenWidth - 40, data.points.length * 18);
 
@@ -21,7 +26,10 @@ export function StockLineChart({data}: Props) {
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Closing Price Trend</Text>
+      <Text style={styles.title}>
+        Closing Price Trend
+        {displayRange ? ` · ${CHART_DISPLAY_LABELS[displayRange]}` : ''}
+      </Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <LineChart
           data={{labels, datasets: [{data: prices}]}}

@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -23,6 +23,10 @@ import {Growth, Horizon} from '../ml/prediction';
 import {PredictionResponse} from '../types/prediction';
 import {StockHistoryResponse} from '../types/stock';
 import {colors} from '../theme/colors';
+import {
+  ChartDisplayRange,
+  sliceStockHistory,
+} from '../utils/chartRange';
 
 const HORIZONS: Horizon[] = ['3m', '6m', '9m', '12m'];
 const GROWTHS: Growth[] = ['10', '20', '30'];
@@ -44,6 +48,7 @@ export function HomeScreen({
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PredictionResponse | null>(null);
   const [stockData, setStockData] = useState<StockHistoryResponse | null>(null);
+  const [displayRange, setDisplayRange] = useState<ChartDisplayRange>('12m');
   const [favorited, setFavorited] = useState(false);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [sliding, setSliding] = useState(false);
@@ -151,6 +156,11 @@ export function HomeScreen({
     (data?.symbol || symbol.trim()) && !loading,
   );
 
+  const chartData = useMemo(
+    () => (stockData ? sliceStockHistory(stockData, displayRange) : null),
+    [stockData, displayRange],
+  );
+
   return (
     <ScrollView
       contentContainerStyle={styles.container}
@@ -233,8 +243,19 @@ export function HomeScreen({
           <StateCard title="An error occurred" message={error} tone="error" />
         ) : data && stockData ? (
           <View style={styles.resultGroup}>
-            <StockSummaryCard data={stockData} />
-            <StockLineChart data={stockData} />
+            {chartData ? (
+              <>
+                <StockSummaryCard
+                  data={chartData}
+                  displayRange={displayRange}
+                  onDisplayRangeChange={setDisplayRange}
+                />
+                <StockLineChart
+                  data={chartData}
+                  displayRange={displayRange}
+                />
+              </>
+            ) : null}
             <ResultCard data={data} />
           </View>
         ) : (
