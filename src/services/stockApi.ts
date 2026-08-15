@@ -14,18 +14,18 @@ const MODEL = require('../assets/us_market_model.tflite');
 
 /** Decision thresholds from threshold_summary.csv (best F1 per head). */
 const DECISION_THR: Record<string, number> = {
-  y_3m_10: 0.1,
-  y_3m_20: 0.12,
-  y_3m_30: 0.11,
-  y_6m_10: 0.11,
-  y_6m_20: 0.09,
-  y_6m_30: 0.11,
-  y_9m_10: 0.16,
-  y_9m_20: 0.12,
-  y_9m_30: 0.11,
-  y_12m_10: 0.18,
-  y_12m_20: 0.11,
-  y_12m_30: 0.11,
+  y_3m_10: 0.28,
+  y_3m_20: 0.23,
+  y_3m_30: 0.23,
+  y_6m_10: 0.28,
+  y_6m_20: 0.24,
+  y_6m_30: 0.22,
+  y_9m_10: 0.27,
+  y_9m_20: 0.23,
+  y_9m_30: 0.23,
+  y_12m_10: 0.28,
+  y_12m_20: 0.24,
+  y_12m_30: 0.24,
 };
 
 function cleanSymbol(symbol: string): string {
