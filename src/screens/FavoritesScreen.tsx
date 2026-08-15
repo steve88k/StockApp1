@@ -51,6 +51,8 @@ async function loadLiveItem(fav: FavoriteStock): Promise<FavoriteLiveItem> {
   }
 }
 
+type SortMode = 'default' | 'predicted';
+
 function matchesQuery(item: FavoriteLiveItem, query: string): boolean {
   const q = query.trim().toUpperCase();
   if (!q) {
@@ -59,9 +61,34 @@ function matchesQuery(item: FavoriteLiveItem, query: string): boolean {
   return item.symbol.toUpperCase().includes(q);
 }
 
+function sortFavorites(
+  list: FavoriteLiveItem[],
+  mode: SortMode,
+): FavoriteLiveItem[] {
+  if (mode === 'default') {
+    return list;
+  }
+
+  return [...list].sort((a, b) => {
+    const aHas = a.probability != null && Number.isFinite(a.probability);
+    const bHas = b.probability != null && Number.isFinite(b.probability);
+    if (aHas && bHas) {
+      return (b.probability as number) - (a.probability as number);
+    }
+    if (aHas) {
+      return -1;
+    }
+    if (bHas) {
+      return 1;
+    }
+    return 0;
+  });
+}
+
 export function FavoritesScreen({onSelectSymbol}: Props) {
   const [items, setItems] = useState<FavoriteLiveItem[]>([]);
   const [query, setQuery] = useState('');
+  const [sortMode, setSortMode] = useState<SortMode>('default');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +136,12 @@ export function FavoritesScreen({onSelectSymbol}: Props) {
     () => items.filter(item => matchesQuery(item, query)),
     [items, query],
   );
+  const displayedItems = useMemo(
+    () => sortFavorites(filteredItems, sortMode),
+    [filteredItems, sortMode],
+  );
   const showSearch = !loading && !error && (items.length > 0 || trimmedQuery.length > 0);
+  const showSort = !loading && !error && items.length > 0;
 
   return (
     <ScrollView
@@ -159,10 +191,48 @@ export function FavoritesScreen({onSelectSymbol}: Props) {
         </View>
       ) : null}
 
+      {showSort ? (
+        <View style={styles.sortBlock}>
+          <Text style={styles.sortLabel}>Sort</Text>
+          <View style={styles.sortRow}>
+            <Pressable
+              onPress={() => setSortMode('default')}
+              style={[
+                styles.sortChip,
+                sortMode === 'default' && styles.sortChipActive,
+              ]}
+              accessibilityLabel="Default sort">
+              <Text
+                style={[
+                  styles.sortChipText,
+                  sortMode === 'default' && styles.sortChipTextActive,
+                ]}>
+                Default
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setSortMode('predicted')}
+              style={[
+                styles.sortChip,
+                sortMode === 'predicted' && styles.sortChipActive,
+              ]}
+              accessibilityLabel="Sort by predicted percent high to low">
+              <Text
+                style={[
+                  styles.sortChipText,
+                  sortMode === 'predicted' && styles.sortChipTextActive,
+                ]}>
+                Predicted % ↓
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
       {showSearch && items.length > 0 ? (
         <Text style={styles.resultCount}>
           {trimmedQuery
-            ? `${filteredItems.length} of ${items.length} favorites`
+            ? `${displayedItems.length} of ${items.length} favorites`
             : `${items.length} favorite${items.length === 1 ? '' : 's'}`}
         </Text>
       ) : null}
@@ -182,14 +252,14 @@ export function FavoritesScreen({onSelectSymbol}: Props) {
             title="No favorites yet"
             message="Search a stock and tap ★ Favorite to pin it here."
           />
-        ) : filteredItems.length === 0 ? (
+        ) : displayedItems.length === 0 ? (
           <StateCard
             title="No matching favorites"
             message={`No saved ticker matches "${trimmedQuery}".`}
           />
         ) : (
           <View style={styles.list}>
-            {filteredItems.map(item => (
+            {displayedItems.map(item => (
               <FavoriteCard
                 key={item.symbol}
                 item={item}
@@ -280,6 +350,39 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 14,
     fontWeight: '700',
+  },
+  sortBlock: {
+    gap: 8,
+  },
+  sortLabel: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  sortRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sortChip: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  sortChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  sortChipText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  sortChipTextActive: {
+    color: '#fff',
   },
   resultCount: {
     color: colors.muted,
