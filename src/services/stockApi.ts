@@ -9,6 +9,11 @@ import {
 import {FundamentalInfo, PriceBar} from '../ml/featureBuilder';
 import {computeSentimentFeatures} from '../ml/sentiment';
 import {StockHistoryResponse, StockPoint} from '../types/stock';
+import {
+  countFilledFundamentals,
+  fetchYahooFundamentals,
+  YAHOO_UA,
+} from './yahooFundamentals';
 
 const MODEL = require('../assets/us_market_model.tflite');
 
@@ -71,8 +76,7 @@ async function fetchYahooChart(
     method: 'GET',
     headers: {
       Accept: 'application/json',
-      'User-Agent':
-        'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+      'User-Agent': YAHOO_UA,
     },
   });
 
@@ -160,10 +164,17 @@ export async function getHistory(symbol: string): Promise<PriceBar[]> {
   return chart.bars;
 }
 
+/** Yahoo quoteSummary (cookie + crumb). Returns {} if auth or network fails. */
 export async function getInfo(symbol: string): Promise<FundamentalInfo> {
   const upper = cleanSymbol(symbol);
   if (!upper) throw new Error('Missing symbol');
-  return {};
+
+  try {
+    return await fetchYahooFundamentals(upper);
+  } catch (error) {
+    console.warn('[getInfo] fundamentals unavailable, using empty info', error);
+    return {};
+  }
 }
 
 function toDecision(
@@ -200,6 +211,7 @@ export async function fetchPrediction(
     throw new Error('No price history available for prediction.');
   }
 
+  const fundFilled = countFilledFundamentals(info);
   if (info.currentPrice == null) {
     info.currentPrice = history[history.length - 1]?.close;
   }
@@ -212,12 +224,16 @@ export async function fetchPrediction(
     sentiment.news_count_7d > 0
       ? ` | sentiment ${sentiment.sentiment_score.toFixed(2)} (${sentiment.news_count_7d} news)`
       : ' | sentiment=0 (no recent news / model missing)';
+  const fundNote =
+    fundFilled > 0
+      ? ` | fundamentals ${fundFilled}`
+      : ' | fundamentals=0';
 
   return {
     symbol: upper,
     probability,
     decision: toDecision(probability, key),
-    rationale: `≥${growth}% in ${horizon} | TFLite on ${history.length} daily bars${sentNote}`,
+    rationale: `≥${growth}% in ${horizon} | TFLite on ${history.length} daily bars${sentNote}${fundNote}`,
   };
 }
 
