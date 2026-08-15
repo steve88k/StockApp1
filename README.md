@@ -1,9 +1,9 @@
 # StockApp1
 
-React Native + TFLite offline stock rise-probability app.
+React Native + TFLite stock rise-probability app.
 
 Predicts the probability that a US stock will rise ≥ 10% / 20% / 30% over the next 3 / 6 / 9 / 12 months.  
-All inference runs on-device. Sentiment is computed from recent Yahoo Finance news titles using a separate TFLite model.
+All inference runs on-device. Live Yahoo data supplies prices, fundamentals, and recent news titles; the models and scaler stay on the device.
 
 ---
 
@@ -14,41 +14,68 @@ All inference runs on-device. Sentiment is computed from recent Yahoo Finance ne
   - Horizons: 3m · 6m · 9m · 12m (≈ 63 / 126 / 189 / 252 trading days)
   - Thresholds: ≥10% · ≥20% · ≥30%
 
+- **Price features**  
+  2 years of daily bars from the Yahoo chart API → returns, volatility, moving averages, 52-week position, dollar volume.
+
+- **Fundamentals**  
+  Yahoo `quoteSummary` via cookie + crumb (same field names as yfinance `Ticker.info`). Fail-soft: if auth or the network fails, those inputs are `0` and prediction still runs. Crumb is cached ~55 minutes; per-ticker fundamentals are cached 6 hours.
+
 - **On-device sentiment**  
   Fetches recent Yahoo news → scores titles with `sentiment.tflite` → feeds 3 features into the main model:
-  - `sentiment_score` (P_pos − P_neg)
-  - `sentiment_ma_7d`
+  - `sentiment_score` (P_pos − P_neg, ≈ −1 ~ +1)
+  - `sentiment_ma_7d` (same average in the app; not a true historical 7-day MA)
   - `news_count_7d`
 
-- **Favorites**  
-  Local storage via AsyncStorage, bottom-tab navigation (Home / Favorites).
+- **Result card**  
+  Probability, BUY / HOLD / AVOID, and a one-line rationale. **What this means** expands an explanation of each rationale segment; tap again to collapse.
 
-- **Offline-first inference**  
-  Price history is fetched live (Yahoo chart API); model + scaler + sentiment model stay on device.
+- **Chart + favorites**  
+  1-year daily chart on Home (display range chips). Favorites persist in AsyncStorage; bottom tabs are Search / Favorites.
 
 ---
 
 ## Architecture (high level)
 
 ```
-Yahoo Chart API ──► Price bars (2y daily)
-Yahoo Search API ──► News titles (last ~7 days)
-                         │
-                         ▼
-              sentiment.tflite  →  sentiment_score / ma_7d / news_count_7d
-                         │
-                         ▼
-              featureBuilder (75 features)
-                         │
-                         ▼
-              StandardScaler (scaler.json)
-                         │
-                         ▼
-              us_market_model.tflite  →  12 probabilities
-                         │
-                         ▼
-              App selects one head by horizon + growth chips
+Yahoo Chart API          ──► 2y daily bars (model) + 1y bars (chart UI)
+Yahoo quoteSummary       ──► ~44 fundamental fields (cookie + crumb)
+Yahoo Search API         ──► news titles (last ~7 days)
+                                 │
+                                 ▼
+                      sentiment.tflite  →  sentiment_score / ma_7d / news_count_7d
+                                 │
+                                 ▼
+                      featureBuilder (75 features)
+                                 │
+                                 ▼
+                      StandardScaler (scaler.json)
+                                 │
+                                 ▼
+                      us_market_model.tflite  →  12 probabilities
+                                 │
+                                 ▼
+                      App selects one head by horizon + growth
+                      BUY if p ≥ thr+0.1, HOLD if p ≥ thr, else AVOID
 ```
+
+A search waits for prediction (history + fundamentals + sentiment) and the chart request in parallel. The spinner lasts until the slowest of those finishes.
+
+---
+
+## What goes into the model
+
+75 features, in `feature_cols.json` order:
+
+| Group | Status | Notes |
+|---|---|---|
+| Price / volume / returns / MAs / 52-week | Live | From 2y daily chart |
+| `dividends`, `stock_splits`, `capital_gains` | Always 0 | Chart parser does not read Yahoo events |
+| Fundamentals (P/E, margins, targets, …) | Live, fail-soft | `getInfo` → `yahooFundamentals.ts` |
+| Sentiment (3 cols) | Live, fail-soft | Last ~7 days of titles only |
+
+`currentPrice` falls back to the last close if quoteSummary omits it.
+
+Typical `sentiment 0.01–0.09` with `N news` is normal: most headlines score near neutral, and the app averages them. `sentiment=0 (0 news)` means no titles or the sentiment model did not load.
 
 ---
 
@@ -69,12 +96,14 @@ src/
 │   ├── scaler.ts
 │   └── sentiment.ts                # Yahoo news + on-device scoring
 ├── services/
-│   ├── stockApi.ts                 # Yahoo data + prediction orchestration
+│   ├── stockApi.ts                 # chart, prediction orchestration, thresholds
+│   ├── yahooFundamentals.ts        # cookie + crumb + quoteSummary
 │   └── favoritesStorage.ts
 ├── screens/
 │   ├── HomeScreen.tsx
 │   └── FavoritesScreen.tsx
 ├── components/
+│   └── ResultCard.tsx              # probability + expandable rationale
 └── types/
 ```
 
@@ -109,19 +138,6 @@ These files must exist under `src/assets/` (and preferably also under `android/a
 | `sentiment.tflite` | `output/sentiment_model/sentiment.tflite` |
 | `sentiment_vocab.json` | Converted from `vectorizer_vocab.txt` |
 
-Convert vocab once:
-
-```bash
-python -c "
-from pathlib import Path
-import json
-lines = Path('output/sentiment_model/vectorizer_vocab.txt').read_text(encoding='utf-8').splitlines()
-Path('src/assets/sentiment_vocab.json').write_text(json.dumps(lines), encoding='utf-8')
-print('vocab written, size =', len(lines))
-"
-cp output/sentiment_model/sentiment.tflite src/assets/
-```
-
 ---
 
 ## Model details
@@ -139,8 +155,18 @@ cp output/sentiment_model/sentiment.tflite src/assets/
 - Trained on Financial PhraseBank (Phase 1)
 
 ### Decision thresholds
-Hard-coded in `stockApi.ts` (best-F1 values from validation).  
-Example: for `y_12m_30` the threshold is currently `0.11`.
+Hard-coded in `stockApi.ts` (best-F1 values from validation):
+
+| Head | thr | Head | thr |
+|---|---|---|---|
+| `y_3m_10` | 0.29 | `y_9m_10` | 0.28 |
+| `y_3m_20` | 0.24 | `y_9m_20` | 0.24 |
+| `y_3m_30` | 0.24 | `y_9m_30` | 0.25 |
+| `y_6m_10` | 0.27 | `y_12m_10` | 0.28 |
+| `y_6m_20` | 0.27 | `y_12m_20` | 0.25 |
+| `y_6m_30` | 0.24 | `y_12m_30` | 0.25 |
+
+Decision: **BUY** if `p ≥ thr + 0.10`, **HOLD** if `p ≥ thr`, otherwise **AVOID**.
 
 ---
 
@@ -148,11 +174,12 @@ Example: for `y_12m_30` the threshold is currently `0.11`.
 
 1. Enter a US ticker (e.g. `AAPL`, `NVDA`)
 2. Choose horizon (3m / 6m / 9m / 12m) and growth target (10 / 20 / 30 %)
-3. The app fetches price history + recent news, runs both TFLite models, and shows:
+3. The app fetches 2y prices, fundamentals, and recent news, runs both TFLite models, and shows:
    - Probability
    - Decision: BUY / HOLD / AVOID
-   - Short rationale including sentiment score and news count
-4. Add to Favorites for quick re-check later
+   - Rationale, e.g. `≥30% in 12m | TFLite on 503 daily bars | sentiment 0.07 (8 news) | fundamentals 41`
+4. Tap **What this means** on the result card to expand each rationale part
+5. Add to Favorites for a later re-check (tap a favorite to search it again)
 
 ---
 
@@ -172,10 +199,13 @@ App only consumes the exported TFLite + JSON artifacts.
 
 ## Notes & limitations
 
-- Sentiment is approximated on-device from the last ~7 days of Yahoo search news. It is not a full daily time-series like the training pipeline.
-- If `sentiment.tflite` or the vocab is missing, or network fails, the three sentiment features fall back to `0` and the main model still runs.
-- Fundamentals (`getInfo`) are currently stubbed; the model relies mainly on price-derived features + sentiment.
-- Yahoo endpoints are unofficial and may change or rate-limit.
+- Sentiment is approximated from the last ~7 days of Yahoo search titles. It is not a full daily time series like the training pipeline. `sentiment_score` and `sentiment_ma_7d` are the same mean in the app.
+- The last three scaler columns (`sentiment_*`) are identity (`mean = 0`, `scale = 1`), so a score of 0.05 enters the main model as 0.05 — a small input.
+- If `sentiment.tflite` or the vocab is missing, or news fetch fails, the three sentiment features fall back to `0`.
+- Fundamentals use unofficial Yahoo `quoteSummary` and need a cookie + crumb. Quote/quoteSummary return 401 without that handshake; the chart API is still more open.
+- React Native `fetch` may not expose `Set-Cookie`. If the rationale stays at `fundamentals=0` while a desktop session can fetch the same API, the cookie header is likely blocked.
+- Yahoo may rate-limit (429). `getInfo` then returns `{}` and does not fail the prediction.
+- Yahoo endpoints are unofficial and may change.
 
 ---
 
